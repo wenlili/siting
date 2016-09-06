@@ -9,7 +9,7 @@ Multiple observer siting
 * `siting.cu` - CUDA program
 
 # Usage
-1. To compile
+1. To compile (requires G++ and CUDA Toolkit)
   * `make` - all programs
   * `make cu` - CUDA program
   * `make omp` - OpenMP program
