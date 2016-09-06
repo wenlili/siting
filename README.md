@@ -1,6 +1,8 @@
 # Siting
 Multiple observer siting
 
+# Introduction
+
 # Files
 * `makefile`
 * `siting.cpp` - sequential and OpenMP program
@@ -13,6 +15,6 @@ Multiple observer siting
   * `make omp` - OpenMP program
   * `make seq` - sequential program
 2. Running  
-  `[cu-siting|omp-siting|seq-siting] nrows roi oht/tht ntests blocksize nwanted intervis infile outfile`
+  `[cusite|ompsite|seqsite] nrows roi oht/tht ntests blocksize nwanted intervis infile outfile`
   * `nrows` - number of rows and columns of the terrain
   * `roi` - radius of interest of observers
