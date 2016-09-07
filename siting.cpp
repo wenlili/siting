@@ -227,8 +227,7 @@ void process_one_block(const int bx, const int by, const int nrows,
         h1 = h2;
       }
     }
-    obs[i * 2] = p1x;
-    obs[i * 2 + 1] = p1y;
+    obs[i] = p1x*nrows + p1y;
     vix[p1x * nrows + p1y] = 0;  // -1 is better
   }
 }
@@ -238,7 +237,7 @@ void find_max(const int nrows, unsigned char *vix, const float blocksize, const 
   #pragma omp parallel for schedule(guided)
   for (int i = 0; i < square(nblocks); i++)
     process_one_block(i/nblocks, i%nblocks, nrows, vix, blocksize,
-                      nwantedperblock, &obs[i*nwantedperblock*2]);
+                      nwantedperblock, &obs[i*nwantedperblock]);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -255,7 +254,7 @@ void calc_one_shed(const int tid,
                    const int roi, const int oht, const int tht,
                    const int nsheds, const int *obs,
                    ullint *sheds) {
-  const int observer[2] = {obs[2 * tid], obs[2 * tid + 1]};
+  const int observer[2] = {obs[tid]/nrows, obs[tid]%nrows};
   const int nr = 2 * roi + 1;
   const int nwpr = (nr + 63) / 64;
   ullint *thisshed = &sheds[tid * nr * nwpr];
@@ -392,14 +391,14 @@ inline int popcll(ullint i) {
 }
 
 void calc_union(const int nrows, const int roi,
-                const int *observer, const ullint *shed,
+                const int obsr, const int obsc, const ullint *shed,
                 ullint *cumshed) {
   const int nr = 2 * roi + 1;
   const int nwpr = (nr + 63) / 64;
   const int cumnwpr = (nrows + 63) / 64;
 
-  int firstword = (observer[1] - roi) / 64;
-  int firstbit = (observer[1] - roi) % 64;
+  int firstword = (obsc - roi) / 64;
+  int firstbit = (obsc - roi) % 64;
   if (firstbit < 0) {
     firstword--;
     firstbit += 64;
@@ -407,7 +406,7 @@ void calc_union(const int nrows, const int roi,
 
   #pragma omp parallel for schedule(guided)
   for (int row = 0; row < nr; row++) {  // each row of shed
-    int cumrow = observer[0] - roi + row;
+    int cumrow = obsr - roi + row;
     if (cumrow >= 0 && cumrow < nrows)  // row inside terrain
       for (int word = 0; word < nwpr; word++) {  // each word of row
         int cumword = firstword + word;
@@ -420,8 +419,8 @@ void calc_union(const int nrows, const int roi,
 }
 
 int is_obs_vis(const int cumnwpr, const ullint *cumshed,
-               const int *observer) {
-  int i = observer[0] * cumnwpr * 64 + observer[1];
+               const int obsr, const int obsc) {
+  int i = obsr * cumnwpr * 64 + obsc;
   if ((cumshed[i / 64] & 1ULL << (63 - i % 64)) != 0)
     return 1;
   else
@@ -438,8 +437,8 @@ void union_area(const int bid, const int nrows, const int roi,
   //if (usedq[bid]) return;
 
   int observer[2];
-  observer[0] = obs[2 * bid];
-  observer[1] = obs[2 * bid + 1];
+  observer[0] = obs[bid]/nrows;
+  observer[1] = obs[bid]%nrows;
 
   //if (nusedsheds > 0 && square(observer[0] - lastobsx) + square(observer[1] - lastobsy) > square(2 * roi)) return;
 
@@ -451,7 +450,7 @@ void union_area(const int bid, const int nrows, const int roi,
 
   int visible;
   if (intervis && nusedsheds > 0)
-    visible = is_obs_vis(cumnwpr, cumshed, observer);
+    visible = is_obs_vis(cumnwpr, cumshed, observer[0], observer[1]);
 
   //#pragma omp parallel for schedule(guided)
   for (int row = 0; row < nr; row++)
@@ -540,7 +539,7 @@ void site_it(const int nrows, const int roi, const int intervis,
     #pragma omp parallel for schedule(guided)
     for (int bid = 0; bid < nsheds; bid++)
       if (!usedq[bid])
-        if (nusedsheds == 0 || square(obs[bid*2]-lastobsx) + square(obs[bid*2+1]-lastobsy) <= square(2*roi))
+        if (nusedsheds == 0 || square(obs[bid]/nrows-lastobsx) + square(obs[bid]%nrows-lastobsy) <= square(2*roi))
           #pragma omp critical
           updatelist.push_back(bid);
     #pragma omp parallel for schedule(guided)
@@ -592,12 +591,12 @@ void site_it(const int nrows, const int roi, const int intervis,
       break;
     }
 
-    //int alreadyvisible = is_obs_vis(cumnwpr, cumshed, &obs[2 * newshed]);  // Must calc before updating cumshed.
-    calc_union(nrows, roi, &obs[2 * newshed], &sheds[newshed * nr * nwpr], cumshed);
+    //int alreadyvisible = is_obs_vis(cumnwpr, cumshed, obs[newshed]/nrows, obs[newshed]%nrows);  // Must calc before updating cumshed.
+    calc_union(nrows, roi, obs[newshed]/nrows, obs[newshed]%nrows, &sheds[newshed * nr * nwpr], cumshed);
     usedsheds[nusedsheds++] = newshed;
     usedq[newshed] = 1;
-    lastobsx = obs[newshed * 2];
-    lastobsy = obs[newshed * 2 + 1];
+    lastobsx = obs[newshed]/nrows;
+    lastobsy = obs[newshed]%nrows;
 
     cumarea += extraarea;
     double areapercentage = 100.0 * cumarea / square(nrows);
@@ -610,7 +609,7 @@ void site_it(const int nrows, const int roi, const int intervis,
 
     /*
     cout << setw(6) << nusedsheds << setw(6) << newshed
-         << setw(6) << obs[newshed * 2] << setw(6) << obs[newshed * 2 + 1]
+         << setw(6) << obs[newshed]/nrows << setw(6) << obs[newshed]%nrows
          << setw(8) << areas[newshed] << setw(8) << extraarea
          << setw(10) << cumarea << setw(8) << areapercentage << setw(2) << alreadyvisible << endl;
     */
@@ -709,7 +708,7 @@ int main(int argc, char **argv) {
   selected = 0;
   elevs = new usint[square(nrows)];
   vix = new unsigned char[square(nrows)];
-  obs = new int[2 * nwanted];
+  obs = new int[nwanted];
   sheds = new ullint[nwanted * nr * nwpr];
   selected = new char[nwanted];
   if (!elevs || !vix || !obs || !sheds || !selected)
@@ -762,7 +761,7 @@ int main(int argc, char **argv) {
   ofstream ofs(argv[9]);
   for (int i = 0; i < nwanted; i++)
     if (selected[i])
-      ofs << obs[2*i] << ',' << obs[2*i+1] << '\n';
+      ofs << obs[i]/nrows << ',' << obs[i]%nrows << '\n';
   ofs.close();
 
   delete[] elevs;
