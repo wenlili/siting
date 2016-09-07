@@ -17,7 +17,7 @@ typedef unsigned short int usint;
 typedef unsigned long long int ullint;
 
 void die(const char *msg) {
-  cerr << "ERROR: " << msg << endl;
+  cout << "ERROR: " << msg << endl;
   exit(1);
 }
 
@@ -108,7 +108,7 @@ __global__ void calc_one_vix(const int nrows, const usint *elevs,
     if (tx >=0 && tx < nrows && ty >= 0 && ty < nrows) {
         tz = elevs[tx * nrows + ty] + tht;
         visq = test_one_target(nrows, elevs, ox, oy, oz, tx, ty, tz);
-        // cerr << "test_one_target(" << ox << ',' << oy << ',' << tx << ',' << ty << ")=" << visq << endl;
+        // cout << "test_one_target(" << ox << ',' << oy << ',' << tx << ',' << ty << ")=" << visq << endl;
     } else {
         visq = 0;
     }
@@ -125,7 +125,7 @@ __global__ void calc_one_vix(const int nrows, const usint *elevs,
     // if (v >= 0.5 || v <= 0.1) break;
   }
   float v = (float)nvis / ntarget;
-  // cerr << "obs at (" << ox << ',' << oy << "), z=" << elevs[ox * nrows + oy] 
+  // cout << "obs at (" << ox << ',' << oy << "), z=" << elevs[ox * nrows + oy] 
   //      << ", vix=" << nvis << '/' << ntarget << '=' << v << endl;
   vix[ox * nrows + oy] = (unsigned char)min(255, (int)(v * 255.999f));
 }
@@ -755,9 +755,7 @@ void site_it(const int nrows, const int roi, const int intervis,
 ////////////////////////////////////////////////////////////////////////////////
 
 int main(int argc, char **argv) {
-  // clock_t begin, middle, end;
   double elapsed_secs;
-  // begin = middle = clock();
   struct timeval begin, middle, end;
   gettimeofday(&begin, NULL);
   middle = begin;
@@ -781,9 +779,9 @@ int main(int argc, char **argv) {
   ullint *sheds;  // viewsheds
   char *selected;
 
-  //cerr << "[SITE, compiled from " << __FILE__ << " on " << __DATE__ << ", " << __TIME__ << ']' << endl;
+  //cout << "[SITE, compiled from " << __FILE__ << " on " << __DATE__ << ", " << __TIME__ << ']' << endl;
   if (argc != 10) {
-    cerr << "argc=" << argc << endl;
+    cout << "argc=" << argc << endl;
     die("SITE requires 9 arguments: nrows, roi, oht/tht, ntests, blocksize, nwanted, intervis, infile, outfile");
   }
 
@@ -795,7 +793,7 @@ int main(int argc, char **argv) {
   nwanted0 = atoi(argv[6]);
   intervis = atoi(argv[7]);
 
-  //cerr << "nrows=" << nrows << ", roi=" << roi << ", oht=" << oht << ", tht=" << tht
+  //cout << "nrows=" << nrows << ", roi=" << roi << ", oht=" << oht << ", tht=" << tht
   //     << ", ntests=" << ntests << "\nblocksize0=" << blocksize0 << ", nwanted0=" << nwanted0
   //     << ", intervis=" << intervis << endl;
 
@@ -816,7 +814,7 @@ int main(int argc, char **argv) {
   if (square(lastsize) < nwantedperblock)                               // too small
     die("The last block is too small for nwantedperblock.");
 
-  //cerr << "blocksize=" << blocksize << ", nblocks=" << nblocks
+  //cout << "blocksize=" << blocksize << ", nblocks=" << nblocks
   //     << ", nwantedperblock=" << nwantedperblock << ", nwanted=" << nwanted << endl;
 
   // number of rows per shed and number of words per row
@@ -850,7 +848,7 @@ int main(int argc, char **argv) {
     for (int j = 0; j < nrows; j++) {
       cin.read(reinterpret_cast<char *>(&elevs[i * nrows + j]), sizeof(usint));
       if (cin.fail()) {
-        cerr << "Error: at i=" << i << ", j=" << j << endl;
+        cout << "Error: at i=" << i << ", j=" << j << endl;
         die("Input failed");
       }
     }
@@ -861,21 +859,17 @@ int main(int argc, char **argv) {
     die("Input failed");
   ifs.close();
 
-  // end = clock();
-  // elapsed_secs = float(end - middle) / CLOCKS_PER_SEC;
   gettimeofday(&end, NULL);
   elapsed_secs = calc_time(middle, end);
   middle = end;
-  cerr << "input:" << elapsed_secs;
+  cout << "input:" << elapsed_secs;
 
   calc_vix(nrows, elevs, roi, oht, tht, ntests, vix);
   cudaDeviceSynchronize();
-  // end = clock();
-  // elapsed_secs = float(end - middle) / CLOCKS_PER_SEC;
   gettimeofday(&end, NULL);
   elapsed_secs = calc_time(middle, end);
   middle = end;
-  cerr << " vix:" << elapsed_secs;
+  cout << " vix:" << elapsed_secs;
   /*
   int x;
   ullint sum = 0;
@@ -884,36 +878,30 @@ int main(int argc, char **argv) {
     ifs >> x;
     sum += square(vix[i]-x);
   }
-  cerr << " RMS VIM error:" << sqrt((double)sum/square(nrows));
+  cout << " RMS VIM error:" << sqrt((double)sum/square(nrows));
   ifs.close();
   */
 
   find_max(nrows, vix, blocksize, nwanted, nblocks, nwantedperblock, obs);
   cudaDeviceSynchronize();
-  // end = clock();
-  // elapsed_secs = float(end - middle) / CLOCKS_PER_SEC;
   gettimeofday(&end, NULL);
   elapsed_secs = calc_time(middle, end);
   middle = end;
-  cerr << " findmax:" << elapsed_secs;
+  cout << " findmax:" << elapsed_secs;
   
   calc_sheds(nrows, elevs, roi, oht, tht, nwanted, obs, sheds);
   cudaDeviceSynchronize();
-  // end = clock();
-  // elapsed_secs = float(end - middle) / CLOCKS_PER_SEC;
   gettimeofday(&end, NULL);
   elapsed_secs = calc_time(middle, end);
   middle = end;
-  cerr << " viewshed:" << elapsed_secs;
+  cout << " viewshed:" << elapsed_secs;
 
   site_it(nrows, roi, intervis, nwanted, obs, sheds, selected);
   cudaDeviceSynchronize();
-  // end = clock();
-  // elapsed_secs = float(end - middle) / CLOCKS_PER_SEC;
   gettimeofday(&end, NULL);
   elapsed_secs = calc_time(middle, end);
   middle = end;
-  cerr << " site:" << elapsed_secs;
+  cout << " site:" << elapsed_secs;
 
   ofstream ofs(argv[9]);
   for (int i = 0; i < nwanted; i++)
@@ -935,10 +923,8 @@ int main(int argc, char **argv) {
   gettimeofday(&end, NULL);
   elapsed_secs = calc_time(middle, end);
   middle = end;
-  cerr << " output:" << elapsed_secs;
-  // end = clock();
-  // elapsed_secs = float(end - begin) / CLOCKS_PER_SEC;
+  cout << " output:" << elapsed_secs;
   gettimeofday(&end, NULL);
   elapsed_secs = calc_time(begin, end);
-  cerr << " total:" << elapsed_secs << endl;
+  cout << " total:" << elapsed_secs << endl;
 }
