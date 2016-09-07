@@ -216,8 +216,7 @@ __global__ void process_one_block(const int nrows, unsigned char *vix,
           h1 = h2;
         }
       }
-      obs[blockIdx.x * nwantedperblock * 2 + i * 2] = p1x;
-      obs[blockIdx.x * nwantedperblock * 2 + i * 2 + 1] = p1y;
+      obs[blockIdx.x * nwantedperblock + i] = p1x*nrows + p1y;
       vix[p1x * nrows + p1y] = 0;  // used
     }
     __syncthreads();
@@ -231,7 +230,7 @@ void find_max(const int nrows, const unsigned char *h_vix,
   int *d_obs;
   if (cudaMalloc((void **)&d_vix, square(nrows) * sizeof(unsigned char)) != cudaSuccess)
     die("cudaMalloc failed");
-  if (cudaMalloc((void **)&d_obs, nwanted * 2 * sizeof(int)) != cudaSuccess)
+  if (cudaMalloc((void **)&d_obs, nwanted * sizeof(int)) != cudaSuccess)
     die("cudaMalloc failed");
   if (cudaMemcpy(d_vix, h_vix, square(nrows) * sizeof(unsigned char), cudaMemcpyHostToDevice) != cudaSuccess)
     die("cudaMemcpy failed");
@@ -241,7 +240,7 @@ void find_max(const int nrows, const unsigned char *h_vix,
   process_one_block<<<dimgrid, dimblock, dimblock * 4 * sizeof(int)>>>(
       nrows, d_vix, blocksize, nblockrows, nwantedperblock, d_obs);
 
-  if (cudaMemcpy(h_obs, d_obs, nwanted * 2 * sizeof(int), cudaMemcpyDeviceToHost) != cudaSuccess)
+  if (cudaMemcpy(h_obs, d_obs, nwanted * sizeof(int), cudaMemcpyDeviceToHost) != cudaSuccess)
     die("cudaMemcpy failed");
 
   if (cudaFree(d_vix) != cudaSuccess) die("cudaFree failed");
@@ -267,8 +266,8 @@ __global__ void calc_one_shed(const int nrows, const usint *elevs,
   ullint * const thisshed = &sheds[blockIdx.x * nr * nwpr];
   __shared__ int ox, oy, oz;
   if (threadIdx.x == 0) {
-    ox = obs[2 * blockIdx.x];
-    oy = obs[2 * blockIdx.x + 1];
+    ox = obs[blockIdx.x]/nrows;
+    oy = obs[blockIdx.x]%nrows;
     oz = elevs[ox * nrows + oy] + oht;
     set_vis(nwpr, roi, roi, thisshed);
   }
@@ -346,13 +345,13 @@ void calc_sheds(const int nrows, const usint *h_elevs,
 
   if (cudaMalloc((void **)&d_elevs, square(nrows) * sizeof(usint)) != cudaSuccess)
     die("cudaMalloc failed");
-  if (cudaMalloc((void **)&d_obs, 2 * nsheds * sizeof(int)) != cudaSuccess)
+  if (cudaMalloc((void **)&d_obs, nsheds * sizeof(int)) != cudaSuccess)
     die("cudaMalloc failed");
   if (cudaMalloc((void **)&d_sheds, nsheds * nr * nwpr * sizeof(ullint)) != cudaSuccess)
     die("cudaMalloc failed");
   if (cudaMemcpy(d_elevs, h_elevs, square(nrows) * sizeof(usint), cudaMemcpyHostToDevice) != cudaSuccess)
     die("cudaMemcpy failed");
-  if (cudaMemcpy(d_obs, h_obs, 2 * nsheds * sizeof(int), cudaMemcpyHostToDevice) != cudaSuccess)
+  if (cudaMemcpy(d_obs, h_obs, nsheds * sizeof(int), cudaMemcpyHostToDevice) != cudaSuccess)
     die("cudaMemcpy failed");
   if (cudaMemset(d_sheds, 0, nsheds * nr * nwpr * sizeof(ullint)) != cudaSuccess)
     die("cudaMemset failed");
@@ -374,16 +373,6 @@ void calc_sheds(const int nrows, const usint *h_elevs,
 // site
 ////////////////////////////////////////////////////////////////////////////////
 
-__host__ int is_obs_vis(const int cumnwpr,
-                        const ullint *cumshed,
-                        const int *observer) {
-  int i = observer[0] * cumnwpr * 64 + observer[1];
-  if ((cumshed[i / 64] & 1ULL << (63 - i % 64)) != 0)
-    return 1;
-  else
-    return 0;
-}
-
 __device__ int is_obs_vis(const int cumnwpr,
                           const ullint *cumshed,
                           const int obsx, const int obsy) {
@@ -401,8 +390,8 @@ __global__ void calc_extra_area(const int nrows, const int roi,
                                 const ullint *cumshed,
                                 int *testshedarea) {
   const int oi = updatelist[blockIdx.x];
-  const int obsx = obs[oi*2];
-  const int obsy = obs[oi*2+1];
+  const int obsx = obs[oi]/nrows;
+  const int obsy = obs[oi]%nrows;
   const ullint *shed = sheds + oi*nr*nwpr;
   int *extraarea = testshedarea + oi;
 
@@ -475,8 +464,8 @@ __global__ void union_area(const int nrows, const int roi, const int intervis,
     if (usedq[oi]) {
       valid = 0;
     } else {
-      obsx = obs[oi*2];
-      obsy = obs[oi*2 + 1];
+      obsx = obs[oi]/nrows;
+      obsy = obs[oi]%nrows;
       if (nusedsheds > 0) {  // lastobs >= 0
         if (square(obsx-lastobsx) + square(obsy-lastobsy) > square(2*roi))
           valid = 0;
@@ -577,8 +566,8 @@ __global__ void calc_union(const int nrows, const int roi,
   __shared__ const ullint *shed;
   if (threadIdx.x == 0) {
     usedq[lastobs] = 1;  // set gridDim.x times
-    lastobsx = obs[lastobs*2];
-    lastobsy = obs[lastobs*2 + 1];
+    lastobsx = obs[lastobs]/nrows;
+    lastobsy = obs[lastobs]%nrows;
     shed = &sheds[lastobs*nr*nwpr];
   }
   __syncthreads();  // wait for thread 0
@@ -630,7 +619,7 @@ void site_it(const int nrows, const int roi, const int intervis,
   ullint *d_cumshed;
   int *d_testshedarea;
   int *d_top100;
-  if (cudaMalloc((void **)&d_obs, 2 * nsheds * sizeof(int)) != cudaSuccess)
+  if (cudaMalloc((void **)&d_obs, nsheds * sizeof(int)) != cudaSuccess)
     die("cudaMalloc failed");
   if (cudaMalloc((void **)&d_sheds, nsheds * nr * nwpr * sizeof(ullint)) != cudaSuccess)
     die("cudaMalloc failed");
@@ -642,7 +631,7 @@ void site_it(const int nrows, const int roi, const int intervis,
     die("cudaMalloc failed");
   if (cudaMalloc((void **)&d_top100, 200 * sizeof(int)) != cudaSuccess)
     die("cudaMalloc failed");
-  if (cudaMemcpy(d_obs, h_obs, 2 * nsheds * sizeof(int), cudaMemcpyHostToDevice) != cudaSuccess)
+  if (cudaMemcpy(d_obs, h_obs, nsheds * sizeof(int), cudaMemcpyHostToDevice) != cudaSuccess)
     die("cudaMemcpy failed");
   if (cudaMemcpy(d_sheds, h_sheds, nsheds * nr * nwpr * sizeof(ullint), cudaMemcpyHostToDevice)
       != cudaSuccess)
@@ -706,8 +695,8 @@ void site_it(const int nrows, const int roi, const int intervis,
     usedsheds[nusedsheds++] = newshed;
     h_usedq[newshed] = 1;
     lastobs = newshed;
-    lastobsx = h_obs[newshed * 2];
-    lastobsy = h_obs[newshed * 2 + 1];
+    lastobsx = h_obs[newshed]/nrows;
+    lastobsy = h_obs[newshed]%nrows;
 
     // set usedq and calculate cumshed
     calc_union<<<nr, 1>>>(nrows, roi, nsheds, d_obs, d_sheds, nr, nwpr, cumnwpr, lastobs, d_usedq, d_cumshed);
@@ -728,7 +717,7 @@ void site_it(const int nrows, const int roi, const int intervis,
 
     /*
     cout << setw(6) << nusedsheds << setw(6) << newshed
-         << setw(6) << h_obs[newshed * 2] << setw(6) << h_obs[newshed * 2 + 1]
+         << setw(6) << h_obs[newshed]/nrows << setw(6) << h_obs[newshed]%nrows
          << setw(8) << areas[newshed] << setw(8) << extraarea
          << setw(10) << cumarea << setw(8) << areapercentage << endl;
     */
@@ -828,7 +817,7 @@ int main(int argc, char **argv) {
   selected = 0;
   elevs = new usint[square(nrows)];
   vix = new unsigned char[square(nrows)];
-  obs = new int[2 * nwanted];
+  obs = new int[nwanted];
   sheds = new ullint[nwanted * nr * nwpr];
   selected = new char[nwanted];
   if (!elevs || !vix || !obs || !sheds || !selected)
@@ -838,7 +827,7 @@ int main(int argc, char **argv) {
     die("cudaMallocHost failed");
   if (cudaMallocHost((void **)&vix, square(nrows) * sizeof(unsigned char)) != cudaSuccess)
     die("cudaMallocHost failed");
-  if (cudaMallocHost((void **)&obs, 2 * nwanted * sizeof(int)) != cudaSuccess)
+  if (cudaMallocHost((void **)&obs, nwanted * sizeof(int)) != cudaSuccess)
     die("cudaMallocHost failed");
   if (cudaMallocHost((void **)&sheds, nwanted * nr * nwpr * sizeof(ullint)) != cudaSuccess)
     die("cudaMallocHost failed");
@@ -906,7 +895,7 @@ int main(int argc, char **argv) {
   ofstream ofs(argv[9]);
   for (int i = 0; i < nwanted; i++)
     if (selected[i])
-      ofs << obs[2*i] << ',' << obs[2*i+1] << '\n';
+      ofs << obs[i]/nrows << ',' << obs[i]%nrows << '\n';
   ofs.close();
 
   delete[] elevs;
