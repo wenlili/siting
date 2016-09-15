@@ -2,6 +2,14 @@
 Multiple observer siting
 
 # Introduction
+The purpose of multiple observer siting is to place observers to cover the surface of a terrain or targets above the terrain.
+It is useful in the placement of radio transmission towers, mobile ad hoc networks, and environmental monitoring sites.
+Let the visibility index of a given terrain point be the number of terrain points visible from an observer at that point, divided by the total number of terrain points within the given radius of interest.
+The algorithm first computes an approximate visibility index for each terrain point, and then selects a set of terrain points with high visibility indexes as candidate observer positions.
+The observers at the candidate positions are called tentative observers.
+Then the algorithm computes the viewshed of each tentative observer and iteratively greedily selects observers from the tentative observers to cover the terrain surface.
+As an option, the algorithm can select observers that are visible from other observers.
+At the top level, this algorithm has four sequential steps: VIX, FINDMAX, VIEWSHED, and SITE.
 
 # Files
 * `README.md` - this file
