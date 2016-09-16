@@ -19,7 +19,7 @@ At the top level, this algorithm has four sequential steps: VIX, FINDMAX, VIEWSH
 * `siting.cu` - CUDA program
 
 # Usage
-1. To compile (requires G++ and CUDA Toolkit)
+1. To compile (requires CUDA Toolkit)
   * `make` - all programs
   * `make cu` - CUDA program
   * `make omp` - OpenMP program
