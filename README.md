@@ -25,7 +25,7 @@ At the top level, this algorithm has four sequential steps: VIX, FINDMAX, VIEWSH
   * `make omp` - OpenMP program
   * `make seq` - sequential program
 2. To run  
-  `[cusite|ompsite|seqsite] nrows roi height targets bw nwanted intervis infile outfile`
+  `[cusite|ompsite|seqsite] nrows roi height targets bw nwanted intervis inputfile outputfile`
   * `nrows` - number of rows and columns of the terrain
   * `roi` - radius of interest of observers
   * `height` - observer/target height above ground
@@ -33,6 +33,6 @@ At the top level, this algorithm has four sequential steps: VIX, FINDMAX, VIEWSH
   * `bw` - width of a square terrain block
   * `nwanted` - number of tentative observers
   * `intervis` - whether observers are inter-visible
-  * `infile` - input terrain file
-  * `outfile` - output observers file
+  * `inputfile` - input terrain file
+  * `outputfile` - output observers file
   * Example: ./cusite 1000 50 100 50 10 10000 0 dem.bin observers.txt
