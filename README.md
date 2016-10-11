@@ -35,3 +35,4 @@ At the top level, this algorithm has four sequential steps: VIX, FINDMAX, VIEWSH
   * `intervis` - whether observers are inter-visible
   * `infile` - input terrain file
   * `outfile` - output observers file
+  * Example: ./cusite 1000 50 100 50 10 10000 0 dem.bin observers.txt
